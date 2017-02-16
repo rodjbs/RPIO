@@ -23,6 +23,7 @@
 
 #include "node_constants.hh"
 #include "node_common.hh"
+#include "node_pwm.hh"
 
 extern "C" {
 #include "c_gpio.h"
@@ -552,22 +553,22 @@ export_channel_to_gpio(const FunctionCallbackInfo<Value>& args)
 }
 
 // adapted from node.h
-#define MY_NODE_DEFINE_STRING(target, constant)                                \
-  do {                                                                        \
-    v8::Isolate* isolate = target->GetIsolate();                              \
-    v8::Local<v8::Context> context = isolate->GetCurrentContext();            \
-    v8::Local<v8::String> constant_name =                                     \
-        v8::String::NewFromUtf8(isolate, #constant);                          \
-    v8::Local<v8::String> constant_value =                                    \
-        v8::String::NewFromUtf8(isolate, constant);                           \
-    v8::PropertyAttribute constant_attributes =                               \
-        static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete);    \
-    (target)->DefineOwnProperty(context,                                      \
-                                constant_name,                                \
-                                constant_value,                               \
-                                constant_attributes).FromJust();              \
-  }                                                                           \
-while (0)
+// #define MY_NODE_DEFINE_STRING(target, constant)                                \
+//   do {                                                                        \
+//     v8::Isolate* isolate = target->GetIsolate();                              \
+//     v8::Local<v8::Context> context = isolate->GetCurrentContext();            \
+//     v8::Local<v8::String> constant_name =                                     \
+//         v8::String::NewFromUtf8(isolate, #constant);                          \
+//     v8::Local<v8::String> constant_value =                                    \
+//         v8::String::NewFromUtf8(isolate, constant);                           \
+//     v8::PropertyAttribute constant_attributes =                               \
+//         static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete);    \
+//     (target)->DefineOwnProperty(context,                                      \
+//                                 constant_name,                                \
+//                                 constant_value,                               \
+//                                 constant_attributes).FromJust();              \
+//   }                                                                           \
+// while (0)
 
 void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
   Isolate* isolate = context->GetIsolate();
