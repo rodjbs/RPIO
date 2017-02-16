@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+class v8::Isolate;
+
 extern "C" {
 #include "cpuinfo.h"
 }
@@ -41,5 +43,5 @@ int gpio_direction[54];
 rpi_info rpiinfo;
 int setup_error;
 int module_setup;
-int check_gpio_priv();
-int get_gpio_number(int channel, unsigned int *gpio);
+int check_gpio_priv(v8::Isolate* isolate);
+int get_gpio_number(v8::Isolate* isolate, int channel, unsigned int *gpio);
