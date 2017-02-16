@@ -11,9 +11,7 @@
         "source/cpuinfo.c",
         "source/event_gpio.c",
         "source/soft_pwm.c"
-        ],
-      'cflags!': [ '-fno-exceptions' ],
-      'cflags_cc!': [ '-fno-exceptions' ]
+        ]
     }
   ]
 }

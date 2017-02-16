@@ -28,6 +28,7 @@ SOFTWARE.
 
 extern "C" {
 #include "c_gpio.h"
+#include "event_gpio.h"
 }
 
 using v8::FunctionCallbackInfo;
@@ -41,132 +42,90 @@ using v8::Exception;
 using v8::Object;
 using v8::Context;
 
+static int rpi_revision; // deprecated
+static int board_info;
+static int gpio_warnings = 1;
 
-class Error {};
-void err() { throw Error(); }
-
-// Read /proc/cpuinfo once and keep the info at hand for further requests
-static void
-cache_rpi_revision(void)
+static int mmap_gpio_mem(Isolate* isolate)
 {
-    revision_int = get_cpuinfo_revision(revision_hex);
+   int result;
+
+   if (module_setup)
+      return 0;
+
+   result = setup();
+   if (result == SETUP_DEVMEM_FAIL)
+   {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "No access to /dev/mem.  Try running as root!")));
+      return 1;
+   } else if (result == SETUP_MALLOC_FAIL) {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "No memory")));
+      return 2;
+   } else if (result == SETUP_MMAP_FAIL) {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Mmap of GPIO registers failed")));
+      return 3;
+   } else if (result == SETUP_CPUINFO_FAIL) {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Unable to open /proc/cpuinfo")));
+      return 4;
+   } else if (result == SETUP_NOT_RPI_FAIL) {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Not running on a RPi!")));
+      return 5;
+   } else { // result == SETUP_OK
+      module_setup = 1;
+      return 0;
+   }
 }
 
-// bcm_to_board() returns the pin for the supplied bcm_gpio_id or -1
-// if not a valid gpio-id. P5 pins are returned with | HEADER_P5, so
-// you can know the header with (retval >> 8) (either 0 or 5) and the
-// exact pin number with (retval & 255).
-static int
-bcm_to_board(int bcm_gpio_id)
+// node function cleanup(channel?)
+static void export_cleanup(const FunctionCallbackInfo<Value>& args)
 {
-    return *(*gpio_to_pin+bcm_gpio_id);
-}
+   int i;
+   int found = 0;
+   unsigned int gpio;
 
-// channel_to_bcm() returns the bcm gpio id for the supplied channel
-// depending on current setmode. Only P1 header channels are supported.
-// To use P5 you need to use BCM gpio ids (`setmode(BCM)`).
-static int
-board_to_bcm(int board_pin_id)
-{
-    return *(*pin_to_gpio+board_pin_id);
-}
+   void cleanup_one(void)
+   {
+      // clean up any /sys/class exports
+      event_cleanup(gpio);
 
-// module_setup is run on import of the GPIO module and calls the setup() method in c_gpio.c
-static int
-module_setup(Isolate* isolate)
-{
-    int result;
-    // printf("Setup module (mmap)\n");
+      // set everything back to input
+      if (gpio_direction[gpio] != -1) {
+         setup_gpio(gpio, INPUT, PUD_OFF);
+         gpio_direction[gpio] = -1;
+         found = 1;
+      }
+   }
 
-    // Set all gpios to input in internal direction (not the system)
-    int i=0;
-    for (i=0; i<54; i++)
-        gpio_direction[i] = -1;
+   if (module_setup && !setup_error) {
+      if (args[0]->IsUndefined()) {   // channel not set - cleanup everything
+         // clean up any /sys/class exports
+         event_cleanup_all();
 
-    result = setup();
-    if (result == SETUP_DEVMEM_FAIL) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "No access to /dev/mem. Try running as root!")));
-        return SETUP_DEVMEM_FAIL;
-    } else if (result == SETUP_MALLOC_FAIL) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "No memory")));
-        return SETUP_MALLOC_FAIL;
-    } else if (result == SETUP_MMAP_FAIL) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Mmap failed on module import")));
-        return SETUP_MALLOC_FAIL;
-    } else {
-        // result == SETUP_OK
-        return SETUP_OK;
+         // set everything back to input
+         for (i=0; i<54; i++) {
+            if (gpio_direction[i] != -1) {
+               setup_gpio(i, INPUT, PUD_OFF);
+               gpio_direction[i] = -1;
+               found = 1;
+            }
+         }
+         gpio_mode = MODE_UNKNOWN;
+      } else if (args[0]->IsNumber()) {    // channel was an int indicating single channel
+         if (get_gpio_number(args[0]->NumberValue(), &gpio))
+            return;
+         cleanup_one();
+      } else {
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Channel must be a number")));
+        return;
+      }
+    }
+
+    if (!found && gpio_warnings) {
+      fprintf(stderr, "No channels have been set up yet - nothing to clean up!  Try cleaning up at the end of your program instead!");
     }
 }
 
-// Sets everything back to input
-// TODO find out if this actually does what it's supposed to
-// I don't actually know anything about v8 nor garbage collection
-void
-cleanup(Isolate *isolate, v8::GCType type, v8::GCCallbackFlags flags)
-{
-    int i;
-    for (i=0; i<54; i++) {
-        if (gpio_direction[i] != -1) {
-            // printf("GPIO %d --> INPUT\n", i);
-            setup_gpio(i, INPUT, PUD_OFF);
-            gpio_direction[i] = -1;
-        }
-    }
-}
-
-// channel_to_gpio tries to convert the supplied channel-id to
-// a BCM GPIO ID based on current setmode. On error, throws js exception
-// and returns a value < 0.
-int
-channel_to_gpio(Isolate* isolate, int channel)
-{
-    int gpio;
-
-     if (gpio_mode != BOARD && gpio_mode != BCM) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Please set pin numbering mode using RPIO.setmode(RPIO.BOARD) or RPIO.setmode(RPIO.BCM)")));
-        return -1;
-    }
-
-   if ( (gpio_mode == BCM && (channel < 0 || channel > 31)) ||
-        (gpio_mode == BOARD && (channel < 1 || channel > 41)) ) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "The channel sent is invalid on a Raspberry Pi (outside of range)")));
-        return -2;
-    }
-
-    if (gpio_mode == BOARD) {
-        if ((gpio = board_to_bcm(channel)) == -1) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "The channel sent is invalid on a Raspberry Pi (not a valid pin)")));
-            return -3;
-        }
-    } else {
-        // gpio_mode == BCM
-        gpio = channel;
-        if (bcm_to_board(gpio) == -1) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "The channel sent is invalid on a Raspberry Pi (not a valid gpio)")));
-            return -3;
-        }
-    }
-
-    //printf("channel2bcm: %d -> %d", channel, gpio);
-    return gpio;
-}
-
-static int
-verify_input(Isolate* isolate, int channel, int *gpio)
-{
-    if ((*gpio = channel_to_gpio(isolate, channel)) == -1)
-        return 0;
-
-    if ((gpio_direction[*gpio] != INPUT) && (gpio_direction[*gpio] != OUTPUT)) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "GPIO channel has not been set up")));
-        return 0;
-    }
-
-    return 1;
-}
-
-void process_args_setup_channel(int& channel, int& direction, int& pud, int& initial,
+int process_args_setup_channel(int& channel, int& direction, int& pud, int& initial,
                             const FunctionCallbackInfo<Value>& args)
 {
   Isolate* isolate = args.GetIsolate();
@@ -174,13 +133,13 @@ void process_args_setup_channel(int& channel, int& direction, int& pud, int& ini
   if(args.Length() < 2) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "setup() has 2 required arguments")));
-    err();
+    return 1;
   }
 
   if (!args[0]->IsNumber() || !args[1]->IsNumber()) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "setup() expected a number")));
-    err();
+    return 1;
   }
 
   channel = args[0]->NumberValue();
@@ -189,7 +148,7 @@ void process_args_setup_channel(int& channel, int& direction, int& pud, int& ini
   if (direction != INPUT && direction != OUTPUT) {
       isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "An invalid direction was passed to setup()")));
-      err();
+      return 1;
   }
 
   if(args.Length() > 2) {
@@ -202,23 +161,14 @@ void process_args_setup_channel(int& channel, int& direction, int& pud, int& ini
     }
   }
 
-  if (direction == OUTPUT)
-      pud = PUD_OFF;
-
-  if (pud != PUD_OFF && pud != PUD_DOWN && pud != PUD_UP) {
-      isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "Invalid value for pull_up_down - should be either PUD_OFF, PUD_UP or PUD_DOWN")));
-      err();
-  }
-
   if(args.Length() > 3) {
     try {
       if(args[3]->IsNumber()) {
         initial = args[3]->NumberValue();
         if(initial != -1 || initial != 0 || initial != 1)
-          err();
+          return 1;
       } else if(!(args[3]->IsUndefined() || args[3]->IsNull())) {
-        err();
+        return 1;
       }
     } catch(const Error& e) {
       isolate->ThrowException(Exception::TypeError(
@@ -228,7 +178,7 @@ void process_args_setup_channel(int& channel, int& direction, int& pud, int& ini
   }
 }
 
-// node function setup(channel, direction, pull_up_down=PUD_OFF, initial=null)
+// node function setup(channel, direction, pull_up_down=PUD_OFF, initial=undefined)
 void
 export_setup_channel(const FunctionCallbackInfo<Value>& args)
 {
@@ -237,29 +187,68 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
     int initial = -1;
     int func;
 
-    try {
-      process_args_setup_channel(channel, direction, pud, initial, args);
-    } catch(const Error& e) {
+    if(process_args_setup_channel(channel, direction, pud, initial, args))
       return;
-    }
 
     Isolate* isolate = args.GetIsolate();
 
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
-        return;
-
-    func = gpio_function(gpio);
-    if (gpio_warnings &&                                      // warnings enabled and
-         ((func != 0 && func != 1) ||                      // (already one of the alt functions or
-         (gpio_direction[gpio] == -1 && func == 1)))  // already an output not set from this program)
+    // check module has been imported cleanly
+    if (setup_error)
     {
-      fprintf(stderr, "%s\n", "RPIO.setup(): This channel is already in use, continuing anyway.  Use RPIO.setwarnings(False) to disable warnings.");
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Module not imported correctly!")));
+       return;
     }
 
-//    printf("Setup GPIO %d direction %d pud %d\n", gpio, direction, pud);
+    if (mmap_gpio_mem())
+       return;
+
+    if (direction != INPUT && direction != OUTPUT) {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "An invalid direction was passed to setup()")));
+       return;
+    }
+
+    if (direction == OUTPUT && pud != PUD_OFF + PY_PUD_CONST_OFFSET) {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "pull_up_down parameter is not valid for outputs")));
+       return;
+    }
+
+    if (direction == INPUT && initial != -1) {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "initial parameter is not valid for inputs")));
+       return;
+    }
+
+    if (direction == OUTPUT)
+       pud = PUD_OFF + PY_PUD_CONST_OFFSET;
+
+    pud -= PY_PUD_CONST_OFFSET;
+    if (pud != PUD_OFF && pud != PUD_DOWN && pud != PUD_UP) {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Invalid value for pull_up_down - should be either PUD_OFF, PUD_UP or PUD_DOWN")));
+       return;
+    }
+
+    if (get_gpio_number(channel, &gpio))
+       return;
+
+    func = gpio_function(gpio);
+    if (gpio_warnings &&                             // warnings enabled and
+        ((func != 0 && func != 1) ||                 // (already one of the alt functions or
+        (gpio_direction[gpio] == -1 && func == 1)))  // already an output not set from this program)
+    {
+       fprintf(stderr, "This channel is already in use, continuing anyway.  Use setwarnings(false) to disable warnings.");
+    }
+
+    // warn about pull/up down on i2c channels
+    if (gpio_warnings) {
+       if (rpiinfo.p1_revision == 0) { // compute module - do nothing
+       } else if ((rpiinfo.p1_revision == 1 && (gpio == 0 || gpio == 1)) ||
+                  (gpio == 2 || gpio == 3)) {
+          if (pud == PUD_UP || pud == PUD_DOWN)
+             fprintf(stderr, "A physical pull up resistor is fitted on this channel!");
+       }
+    }
+
     if (direction == OUTPUT && (initial == LOW || initial == HIGH)) {
-//        printf("Writing intial value %d\n",initial);
-        output_gpio(gpio, initial);
+       output_gpio(gpio, initial);
     }
     setup_gpio(gpio, direction, pud);
     gpio_direction[gpio] = direction;
@@ -273,13 +262,13 @@ void process_args_output_gpio(int& channel, int& value, const FunctionCallbackIn
   if(args.Length() < 2) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "setup() has 2 required arguments")));
-    err();
+    return 1;
   }
 
   if (!args[0]->IsNumber() || !args[1]->IsNumber()) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "setup() expected a number")));
-    err();
+    return 1;
   }
 
   channel = args[0]->NumberValue();
@@ -294,42 +283,21 @@ export_output_gpio(const FunctionCallbackInfo<Value>& args)
 
     Isolate* isolate = args.GetIsolate();
 
-    try {
-      process_args_output_gpio(channel, value, args);
-    } catch(const Error& e) {
-      return;
-    }
+    if(process_args_output_gpio(channel, value, args))
+      return 1;
 
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
+    //    printf("Output GPIO %d value %d\n", gpio, value);
+    if (get_gpio_number(channel, &gpio))
         return;
 
-    if (gpio_direction[gpio] != OUTPUT) {
-        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "The GPIO channel has not been set up as an OUTPUT")));
-        return;
+    if (gpio_direction[gpio] != OUTPUT)
+    {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "The GPIO channel has not been set up as an OUTPUT")));
+       return;
     }
 
-//    printf("Output GPIO %d value %d\n", gpio, value);
-    output_gpio(gpio, value);
-
-}
-
-// node function forceoutput(channel, value) without direction check
-void
-export_forceoutput_gpio(const FunctionCallbackInfo<Value>& args)
-{
-    int gpio, channel, value;
-
-    Isolate* isolate = args.GetIsolate();
-
-    try {
-      process_args_output_gpio(channel, value, args);
-    } catch(const Error& e) {
-      return;
-    }
-
-//    printf("Output GPIO %d value %d\n", gpio, value);
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
-        return;
+    if (check_gpio_priv())
+       return;
 
     output_gpio(gpio, value);
 
@@ -402,40 +370,22 @@ export_input_gpio(const FunctionCallbackInfo<Value>& args)
 
     Isolate* isolate = args.GetIsolate();
 
-    try {
-      process_args_input_gpio(channel, args);
-    } catch(const Error& e) {
-      return;
-    }
-
-    if (!verify_input(isolate, channel, &gpio))
+    if(process_args_input_gpio(channel, args))
       return;
 
-    //    printf("Input GPIO %d\n", gpio);
-    if (input_gpio(gpio))
-      args.GetReturnValue().Set(Number::New(isolate, 1));
-    else
-      args.GetReturnValue().Set(Number::New(isolate, 0));
-}
-
-// node function value = input(channel) without direction check
-static void
-export_forceinput_gpio(const FunctionCallbackInfo<Value>& args)
-{
-    int gpio, channel;
-
-    Isolate* isolate = args.GetIsolate();
-
-    try {
-      process_args_input_gpio(channel, args);
-    } catch(const Error& e) {
-      return;
-    }
-
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
+    if (get_gpio_number(channel, &gpio))
         return;
 
-    //    printf("Input GPIO %d\n", gpio);
+    // check channel is set up as an input or output
+    if (gpio_direction[gpio] != INPUT && gpio_direction[gpio] != OUTPUT)
+    {
+       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "You must setup() the GPIO channel first")));
+       return;
+    }
+
+    if (check_gpio_priv())
+       return;
+
     if (input_gpio(gpio))
       args.GetReturnValue().Set(Number::New(isolate, 1));
     else
@@ -460,14 +410,49 @@ export_setmode(const FunctionCallbackInfo<Value>& args)
     return;
   }
 
-  ::gpio_mode = args[0]->NumberValue();
+  int new_mode = args[0]->NumberVaue();
 
-  if (gpio_mode != BOARD && gpio_mode != BCM)
+  if (gpio_mode != MODE_UNKNOWN && new_mode != gpio_mode)
   {
-      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "An invalid mode was passed to setmode()")));
-      return;
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "A different mode has already been set!")));
+     return;
   }
 
+  if (setup_error)
+  {
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Module not imported correctly!")));
+     return;
+  }
+
+  if (new_mode != BOARD && new_mode != BCM)
+  {
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "An invalid mode was passed to setmode()")));
+     return;
+  }
+
+  if (rpiinfo.p1_revision == 0 && new_mode == BOARD)
+  {
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "BOARD numbering system not applicable on compute module")));
+     return;
+  }
+
+  gpio_mode = new_mode;
+
+}
+
+// node function mode = getmode()
+void export_getmode(const FunctionCallbackInfo<Value>& args)
+{
+   if (setup_error)
+   {
+      isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Module not imported correctly!")));
+      return;
+   }
+
+   if (gpio_mode == MODE_UNKNOWN)
+      return;
+
+   args.GetReturnValue().Set(Number::New(gpio_mode, 0));
 }
 
 // node function value = gpio_function(channel)
@@ -553,6 +538,25 @@ export_channel_to_gpio(const FunctionCallbackInfo<Value>& args)
   args.GetReturnValue().Set(Number::New(isolate, gpio));
 }
 
+static unsigned int chan_from_gpio(unsigned int gpio)
+{
+   int chan;
+   int chans;
+
+   if (gpio_mode == BCM)
+      return;
+   if (rpiinfo.p1_revision == 0)   // not applicable for compute module
+      return;
+   else if (rpiinfo.p1_revision == 1 || rpiinfo.p1_revision == 2)
+      chans = 26;
+   else
+      chans = 40;
+   for (chan=1; chan<=chans; chan++)
+      if (*(*pin_to_gpio+chan) == gpio)
+         return;
+   return;
+}
+
 // adapted from node.h
 // #define MY_NODE_DEFINE_STRING(target, constant)                                \
 //   do {                                                                        \
@@ -578,13 +582,13 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
 
   PWM::Init(exports);
 
+  NODE_SET_METHOD(exports, "cleanup", export_cleanup);
   NODE_SET_METHOD(exports, "setup", export_setup_channel);
   NODE_SET_METHOD(exports, "output", export_output_gpio);
-  NODE_SET_METHOD(exports, "forceoutput", export_forceoutput_gpio);
   NODE_SET_METHOD(exports, "set_pullupdn", export_set_pullupdn);
   NODE_SET_METHOD(exports, "input", export_input_gpio);
-  NODE_SET_METHOD(exports, "forceinput", export_forceinput_gpio);
   NODE_SET_METHOD(exports, "setmode", export_setmode);
+  NODE_SET_METHOD(exports, "getmode", export_getmode);
   NODE_SET_METHOD(exports, "gpio_function", export_gpio_function);
   NODE_SET_METHOD(exports, "setwarnings", export_setwarnings);
   NODE_SET_METHOD(exports, "channel_to_gpio", export_channel_to_gpio);
