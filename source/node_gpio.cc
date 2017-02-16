@@ -21,9 +21,11 @@
 
 #include <node.h>
 
+#include "node_constants.hh"
+
 extern "C" {
-#include "../c_gpio/c_gpio.h"
-#include "../c_gpio/cpuinfo.h"
+#include "c_gpio.h"
+#include "cpuinfo.h"
 }
 
 using v8::FunctionCallbackInfo;
@@ -615,26 +617,7 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
   NODE_SET_METHOD(exports, "setwarnings", export_setwarnings);
   NODE_SET_METHOD(exports, "channel_to_gpio", export_channel_to_gpio);
 
-  const int high = HIGH;
-  NODE_DEFINE_CONSTANT(exports, high);
-  const int low = LOW;
-  NODE_DEFINE_CONSTANT(exports, low);
-  const int out = OUTPUT;
-  NODE_DEFINE_CONSTANT(exports, out);
-  const int in = INPUT;
-  NODE_DEFINE_CONSTANT(exports, in);
-  const int alt0 = ALT0;
-  NODE_DEFINE_CONSTANT(exports, alt0);
-  const int board = BOARD;
-  NODE_DEFINE_CONSTANT(exports, board);
-  const int bcm = BCM;
-  NODE_DEFINE_CONSTANT(exports, bcm);
-  const int pud_off = PUD_OFF;
-  NODE_DEFINE_CONSTANT(exports, pud_off);
-  const int pud_up = PUD_UP;
-  NODE_DEFINE_CONSTANT(exports, pud_up);
-  const int pud_down = PUD_DOWN;
-  NODE_DEFINE_CONSTANT(exports, pud_down);
+  define_constants(exports);
 
 
   cache_rpi_revision();
