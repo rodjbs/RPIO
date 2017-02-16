@@ -1,0 +1,31 @@
+{
+  "name": "rpio",
+  "version": "1.0.0",
+  "description": "RPIO is an advanced GPIO module for the Raspberry Pi.",
+  "main": "source/index.js",
+  "files": [ "source", "binding.gyp" ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rodjbs/RPIO.git"
+  },
+  "tags": [
+  "raspberry",
+  "pi",
+  "gpio",
+  "rpio"
+  ],
+  "dependencies": {},
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "author": "",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/rodjbs/RPIO/issues"
+  },
+  "homepage": "https://github.com/rodjbs/RPIO#readme",
+  "os": [ "!win32" ],
+  "private": true
+}

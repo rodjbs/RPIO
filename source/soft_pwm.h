@@ -1,6 +1,5 @@
-Node bindings for RPi.GPIO library, which has the following LICENSE:
-
-Copyright (c) 2012-2014 Ben Croston
+/*
+Copyright (c) 2013 Ben Croston
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -19,4 +18,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+*/
 
+/* Software PWM using threads */
+ 
+void pwm_set_duty_cycle(unsigned int gpio, float dutycycle);
+void pwm_set_frequency(unsigned int gpio, float freq);
+void pwm_start(unsigned int gpio);
+void pwm_stop(unsigned int gpio);
