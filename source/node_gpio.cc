@@ -574,6 +574,8 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
 
   isolate->AddGCPrologueCallback(cleanup);
 
+  PWM::Init(exports);
+
   NODE_SET_METHOD(exports, "setup", export_setup_channel);
   NODE_SET_METHOD(exports, "output", export_output_gpio);
   NODE_SET_METHOD(exports, "forceoutput", export_forceoutput_gpio);
@@ -588,36 +590,36 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
   define_constants(exports);
 
 
-  cache_rpi_revision();
-  switch (revision_int) {
-  case 1:
-      pin_to_gpio = &pin_to_gpio_rev1;
-      gpio_to_pin = &gpio_to_pin_rev1;
-      break;
-  case 2:
-      pin_to_gpio = &pin_to_gpio_rev2;
-      gpio_to_pin = &gpio_to_pin_rev2;
-      break;
-  case 3:
-      pin_to_gpio = &pin_to_gpio_rev3;
-      gpio_to_pin = &gpio_to_pin_rev3;
-      break;
-  default:
-      isolate->ThrowException(Exception::Error(
-        String::NewFromUtf8(isolate, "This module can only be run on a Raspberry Pi!")));
-      return;
-  }
-
-  const int rpi_revision = revision_int;
-  NODE_DEFINE_CONSTANT(exports, rpi_revision);
-
-  const char* rpi_revision_hex = revision_hex;
-  MY_NODE_DEFINE_STRING(exports, rpi_revision_hex);
-
-  const char* version = "1.0.0";
-  MY_NODE_DEFINE_STRING(exports, version);
-
-  module_setup(isolate);
+  // cache_rpi_revision();
+  // switch (revision_int) {
+  // case 1:
+  //     pin_to_gpio = &pin_to_gpio_rev1;
+  //     gpio_to_pin = &gpio_to_pin_rev1;
+  //     break;
+  // case 2:
+  //     pin_to_gpio = &pin_to_gpio_rev2;
+  //     gpio_to_pin = &gpio_to_pin_rev2;
+  //     break;
+  // case 3:
+  //     pin_to_gpio = &pin_to_gpio_rev3;
+  //     gpio_to_pin = &gpio_to_pin_rev3;
+  //     break;
+  // default:
+  //     isolate->ThrowException(Exception::Error(
+  //       String::NewFromUtf8(isolate, "This module can only be run on a Raspberry Pi!")));
+  //     return;
+  // }
+  //
+  // const int rpi_revision = revision_int;
+  // NODE_DEFINE_CONSTANT(exports, rpi_revision);
+  //
+  // const char* rpi_revision_hex = revision_hex;
+  // MY_NODE_DEFINE_STRING(exports, rpi_revision_hex);
+  //
+  // const char* version = "1.0.0";
+  // MY_NODE_DEFINE_STRING(exports, version);
+  //
+  // module_setup(isolate);
 }
 
 
