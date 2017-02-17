@@ -158,12 +158,12 @@ int process_args_setup_channel(int& channel, int& direction, int& pud, int& init
     if(args[2]->IsNumber()) {
       pud = args[2]->NumberValue();
     } else if(args[2]->IsUndefined()) {
-      pud = PUD_OFF;
+      pud = pud_off;
     } else {
       pud = -100; // spagetthi: fail the pud value check
     }
   } else {
-    pud = PUD_OFF;
+    pud = pud_off;
   }
 
   int invalid_initial = 0;
