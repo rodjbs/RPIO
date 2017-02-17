@@ -20,25 +20,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#include <node.h>
+
 #define PY_PUD_CONST_OFFSET 20
 #define PY_EVENT_CONST_OFFSET 30
 
-int high;
-int low;
-int input;
-int output;
-int pwm;
-int serial;
-int i2c;
-int spi;
-int unknown;
-int board;
-int bcm;
-int pud_off;
-int pud_up;
-int pud_down;
-int rising_edge;
-int falling_edge;
-int both_edge;
+extern int high;
+extern int low;
+extern int input;
+extern int output;
+extern int pwm;
+extern int serial;
+extern int i2c;
+extern int spi;
+extern int unknown;
+extern int board;
+extern int bcm;
+extern int pud_off;
+extern int pud_up;
+extern int pud_down;
+extern int rising_edge;
+extern int falling_edge;
+extern int both_edge;
 
-void define_constants(Local<Object> exports);
+void define_constants(const v8::Local<v8::Object>& exports);

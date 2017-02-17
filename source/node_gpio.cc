@@ -81,20 +81,9 @@ static void export_cleanup(const FunctionCallbackInfo<Value>& args)
 {
    int i;
    int found = 0;
-   unsigned int gpio;
+   int gpio;
 
-   void cleanup_one(void)
-   {
-      // clean up any /sys/class exports
-      event_cleanup(gpio);
-
-      // set everything back to input
-      if (gpio_direction[gpio] != -1) {
-         setup_gpio(gpio, INPUT, PUD_OFF);
-         gpio_direction[gpio] = -1;
-         found = 1;
-      }
-   }
+   Isolate* isolate = args.GetIsolate();
 
    if (module_setup && !setup_error) {
       if (args[0]->IsUndefined()) {   // channel not set - cleanup everything
@@ -111,9 +100,18 @@ static void export_cleanup(const FunctionCallbackInfo<Value>& args)
          }
          gpio_mode = MODE_UNKNOWN;
       } else if (args[0]->IsNumber()) {    // channel was an int indicating single channel
-         if (get_gpio_number(args[0]->NumberValue(), &gpio))
+         if (get_gpio_number(isolate, args[0]->NumberValue(), &gpio))
             return;
-         cleanup_one();
+
+        // clean up any /sys/class exports
+        event_cleanup(gpio);
+
+        // set everything back to input
+        if (gpio_direction[gpio] != -1) {
+           setup_gpio(gpio, INPUT, PUD_OFF);
+           gpio_direction[gpio] = -1;
+           found = 1;
+        }
       } else {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Channel must be a number")));
         return;
@@ -166,21 +164,23 @@ int process_args_setup_channel(int& channel, int& direction, int& pud, int& init
     }
   }
 
+  int invalid_initial = 0;
   if(args.Length() > 3) {
-    try {
-      if(args[3]->IsNumber()) {
-        initial = args[3]->NumberValue();
-        if(initial != -1 || initial != 0 || initial != 1)
-          return 1;
-      } else if(!(args[3]->IsUndefined() || args[3]->IsNull())) {
-        return 1;
-      }
-    } catch(const Error& e) {
-      isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "Invalid value for initial")));
-      throw;
+    if(args[3]->IsNumber()) {
+      initial = args[3]->NumberValue();
+      if(initial != -1 || initial != 0 || initial != 1)
+        invalid_initial = 1;
+    } else if(!(args[3]->IsUndefined() || args[3]->IsNull())) {
+      invalid_initial = 1;
     }
   }
+
+  if(invalid_initial) {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Invalid value for initial")));
+    return 1;
+  }
+
+  return 0;
 }
 
 // node function setup(channel, direction, pull_up_down=PUD_OFF, initial=undefined)
@@ -204,7 +204,7 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
        return;
     }
 
-    if (mmap_gpio_mem())
+    if (mmap_gpio_mem(isolate))
        return;
 
     if (direction != INPUT && direction != OUTPUT) {
@@ -231,7 +231,7 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
        return;
     }
 
-    if (get_gpio_number(channel, &gpio))
+    if (get_gpio_number(isolate, channel, &gpio))
        return;
 
     func = gpio_function(gpio);
@@ -260,7 +260,7 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
 
 }
 
-void process_args_output_gpio(int& channel, int& value, const FunctionCallbackInfo<Value>& args)
+int process_args_output_gpio(int& channel, int& value, const FunctionCallbackInfo<Value>& args)
 {
   Isolate* isolate = args.GetIsolate();
 
@@ -278,6 +278,8 @@ void process_args_output_gpio(int& channel, int& value, const FunctionCallbackIn
 
   channel = args[0]->NumberValue();
   value = args[1]->NumberValue();
+
+  return 0;
 }
 
 // node function output(channel, value)
@@ -289,10 +291,10 @@ export_output_gpio(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = args.GetIsolate();
 
     if(process_args_output_gpio(channel, value, args))
-      return 1;
+      return;
 
     //    printf("Output GPIO %d value %d\n", gpio, value);
-    if (get_gpio_number(channel, &gpio))
+    if (get_gpio_number(isolate, channel, &gpio))
         return;
 
     if (gpio_direction[gpio] != OUTPUT)
@@ -301,70 +303,31 @@ export_output_gpio(const FunctionCallbackInfo<Value>& args)
        return;
     }
 
-    if (check_gpio_priv())
+    if (check_gpio_priv(isolate))
        return;
 
     output_gpio(gpio, value);
 
 }
 
-// node function set_pullupdn(channel, pull_up_down=PUD_OFF)
-static void
-export_set_pullupdn(const FunctionCallbackInfo<Value>& args)
-{
-    int gpio, channel;
-    int pud = PUD_OFF;
-
-    Isolate* isolate = args.GetIsolate();
-
-    if(args.Length() < 1) {
-      isolate->ThrowException(Exception::TypeError(
-          String::NewFromUtf8(isolate, "set_pullupdn() has 1 required argument")));
-      return;
-    }
-
-    if (!args[0]->IsNumber()) {
-      isolate->ThrowException(Exception::TypeError(
-          String::NewFromUtf8(isolate, "channel must be a number")));
-      return;
-    }
-
-    channel = args[0]->NumberValue();
-
-    if(args.Length() > 1 && !args[1]->IsUndefined()) {
-      if(!args[1]->IsNumber()) {
-        isolate->ThrowException(Exception::TypeError(
-            String::NewFromUtf8(isolate, "pull_up_down must be a number")));
-        return;
-      }
-
-      pud = args[1]->NumberValue();
-    }
-
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
-        return;
-
-    // printf("Setting gpio %d PULLUPDN to %d", gpio, pud);
-    set_pullupdn(gpio, pud);
-
-}
-
-void process_args_input_gpio(int& channel, const FunctionCallbackInfo<Value>& args) {
+int process_args_input_gpio(int& channel, const FunctionCallbackInfo<Value>& args) {
   Isolate* isolate = args.GetIsolate();
 
   if(args.Length() < 1) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "input() has 1 required argument")));
-    return;
+    return 1;
   }
 
   if (!args[0]->IsNumber()) {
     isolate->ThrowException(Exception::TypeError(
         String::NewFromUtf8(isolate, "channel must be a number")));
-    return;
+    return 1;
   }
 
   channel = args[0]->NumberValue();
+
+  return 0;
 }
 
 // node function value = input(channel)
@@ -378,7 +341,7 @@ export_input_gpio(const FunctionCallbackInfo<Value>& args)
     if(process_args_input_gpio(channel, args))
       return;
 
-    if (get_gpio_number(channel, &gpio))
+    if (get_gpio_number(isolate, channel, &gpio))
         return;
 
     // check channel is set up as an input or output
@@ -388,7 +351,7 @@ export_input_gpio(const FunctionCallbackInfo<Value>& args)
        return;
     }
 
-    if (check_gpio_priv())
+    if (check_gpio_priv(isolate))
        return;
 
     if (input_gpio(gpio))
@@ -415,7 +378,7 @@ export_setmode(const FunctionCallbackInfo<Value>& args)
     return;
   }
 
-  int new_mode = args[0]->NumberVaue();
+  int new_mode = args[0]->NumberValue();
 
   if (gpio_mode != MODE_UNKNOWN && new_mode != gpio_mode)
   {
@@ -459,7 +422,7 @@ void export_getmode(const FunctionCallbackInfo<Value>& args)
    if (gpio_mode == MODE_UNKNOWN)
       return;
 
-   args.GetReturnValue().Set(Number::New(gpio_mode, 0));
+   args.GetReturnValue().Set(Number::New(isolate, gpio_mode));
 }
 
 // node function value = gpio_function(channel)
@@ -484,10 +447,10 @@ export_gpio_function(const FunctionCallbackInfo<Value>& args)
 
     channel = args[0]->NumberValue();
 
-    if (get_gpio_number(channel, &gpio))
+    if (get_gpio_number(isolate, channel, &gpio))
         return;
 
-    if (mmap_gpio_mem())
+    if (mmap_gpio_mem(isolate))
        return;
 
     f = gpio_function(gpio);
@@ -575,23 +538,23 @@ export_setwarnings(const FunctionCallbackInfo<Value>& args)
   gpio_warnings = static_cast<int>(args[0]->BooleanValue());
 }
 
-static unsigned int chan_from_gpio(unsigned int gpio)
+static int chan_from_gpio(int gpio)
 {
    int chan;
    int chans;
 
    if (gpio_mode == BCM)
-      return;
+      return gpio;
    if (rpiinfo.p1_revision == 0)   // not applicable for compute module
-      return;
+      return -1;
    else if (rpiinfo.p1_revision == 1 || rpiinfo.p1_revision == 2)
       chans = 26;
    else
       chans = 40;
    for (chan=1; chan<=chans; chan++)
       if (*(*pin_to_gpio+chan) == gpio)
-         return;
-   return;
+         return chan;
+   return -1;
 }
 
 // TODO transcribe edge / event methods
@@ -603,12 +566,11 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
 
   isolate->AddGCPrologueCallback(gc_cleanup);
 
-  PWM::Init(exports);
+  PWMClass::Init(exports);
 
   NODE_SET_METHOD(exports, "cleanup", export_cleanup);
   NODE_SET_METHOD(exports, "setup", export_setup_channel);
   NODE_SET_METHOD(exports, "output", export_output_gpio);
-  NODE_SET_METHOD(exports, "set_pullupdn", export_set_pullupdn);
   NODE_SET_METHOD(exports, "input", export_input_gpio);
   NODE_SET_METHOD(exports, "setmode", export_setmode);
   NODE_SET_METHOD(exports, "getmode", export_getmode);
@@ -617,7 +579,7 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
 
   define_constants(exports);
 
-  for (i=0; i<54; i++)
+  for (int i=0; i<54; i++)
      gpio_direction[i] = -1;
 
   // detect board revision and set up accordingly
@@ -637,7 +599,7 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
       pin_to_gpio = &pin_to_gpio_rev3;
    }
 
-  int rpi_revision = revision_int;
+  int rpi_revision = rpiinfo.p1_revision;
   NODE_DEFINE_CONSTANT(exports, rpi_revision);
 
 }

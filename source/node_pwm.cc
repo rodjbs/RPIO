@@ -28,16 +28,26 @@ extern "C" {
 #include "c_gpio.h"
 }
 
-PWM::PWM()
+using v8::String;
+using v8::Local;
+using v8::Object;
+using v8::Isolate;
+using v8::Exception;
+using v8::FunctionTemplate;
+using v8::Value;
+using v8::Context;
+using v8::Function;
+
+PWMClass::PWMClass()
 {
 }
 
-PWM::~PWM()
+PWMClass::~PWMClass()
 {
   pwm_stop(this->gpio_);
 }
 
-void PWM::Init(Local<Object> exports) {
+void PWMClass::Init(Local<Object> exports) {
   Isolate* isolate = exports->GetIsolate();
 
   // Prepare constructor template
@@ -57,11 +67,11 @@ void PWM::Init(Local<Object> exports) {
 }
 
 // js function PWM(channel, frequency)
-static void PWM::New(const v8::FunctionCallbackInfo<v8::Value>& args)
+void PWMClass::New(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
   int channel;
   float frequency;
-  unsigned int gpio;
+  int gpio;
 
   Isolate* isolate = args.GetIsolate();
 
@@ -101,7 +111,7 @@ static void PWM::New(const v8::FunctionCallbackInfo<v8::Value>& args)
 
   if (args.IsConstructCall()) {
     // Invoked as constructor: `new PWM(...)`
-    PWM* obj = new PWM();
+    PWMClass* obj = new PWMClass();
     obj->Wrap(args.This());
     args.GetReturnValue().Set(args.This());
 
@@ -122,7 +132,7 @@ static void PWM::New(const v8::FunctionCallbackInfo<v8::Value>& args)
 }
 
 // node method start(dutycycle)
-static void PWM::Start(const v8::FunctionCallbackInfo<v8::Value>& args)
+void PWMClass::Start(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
   float dutycycle;
 
@@ -149,14 +159,14 @@ static void PWM::Start(const v8::FunctionCallbackInfo<v8::Value>& args)
   }
 
 
-  PWM* obj = ObjectWrap::Unwrap<PWM>(args.Holder());
+  PWMClass* obj = ObjectWrap::Unwrap<PWMClass>(args.Holder());
   obj->dutycycle_ = dutycycle;
   pwm_set_duty_cycle(obj->gpio_, obj->dutycycle_);
   pwm_start(obj->gpio_);
 }
 
 // node method changeDutyCycle(dutycycle)
-static void PWM::ChangeDutyCycle(const v8::FunctionCallbackInfo<v8::Value>& args)
+void PWMClass::ChangeDutyCycle(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     float dutycycle;
 
@@ -182,13 +192,13 @@ static void PWM::ChangeDutyCycle(const v8::FunctionCallbackInfo<v8::Value>& args
         return;
     }
 
-    PWM* obj = ObjectWrap::Unwrap<PWM>(args.Holder());
+    PWMClass* obj = ObjectWrap::Unwrap<PWMClass>(args.Holder());
     obj->dutycycle_ = dutycycle;
     pwm_set_duty_cycle(obj->gpio_, obj->dutycycle_);
 }
 
 // node method changeFrequency(frequency)
-static void PWM::ChangeFrequency(const v8::FunctionCallbackInfo<v8::Value>& args)
+void PWMClass::ChangeFrequency(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
   float frequency;
 
@@ -214,7 +224,7 @@ static void PWM::ChangeFrequency(const v8::FunctionCallbackInfo<v8::Value>& args
     return;
   }
 
-  PWM* obj = ObjectWrap::Unwrap<PWM>(args.Holder());
+  PWMClass* obj = ObjectWrap::Unwrap<PWMClass>(args.Holder());
 
   obj->freq_ = frequency;
 
@@ -222,8 +232,8 @@ static void PWM::ChangeFrequency(const v8::FunctionCallbackInfo<v8::Value>& args
 }
 
 // node method stop()
-static void PWM::Stop(const v8::FunctionCallbackInfo<v8::Value>& args)
+void PWMClass::Stop(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    PWM* obj = ObjectWrap::Unwrap<PWM>(args.Holder());
+    PWMClass* obj = ObjectWrap::Unwrap<PWMClass>(args.Holder());
     pwm_stop(obj->gpio_);
 }

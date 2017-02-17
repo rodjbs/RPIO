@@ -28,6 +28,9 @@ extern "C" {
 #include "c_gpio.h"
 }
 
+using v8::String;
+using v8::Exception;
+
 int gpio_mode = MODE_UNKNOWN;
 const int pin_to_gpio_rev1[41] = {-1, -1, -1, 0, -1, 1, -1, 4, 14, -1, 15, 17, 18, 21, -1, 22, 23, -1, 24, 10, -1, 9, 25, 11, 8, -1, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 const int pin_to_gpio_rev2[41] = {-1, -1, -1, 2, -1, 3, -1, 4, 14, -1, 15, 17, 18, 27, -1, 22, 23, -1, 24, 10, -1, 9, 25, 11, 8, -1, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
@@ -53,7 +56,7 @@ int check_gpio_priv(v8::Isolate* isolate)
     return 0;
 }
 
-int get_gpio_number(v8::Isolate* isolate, int channel, unsigned int *gpio)
+int get_gpio_number(v8::Isolate* isolate, int channel, int *gpio)
 {
     // check setmode() has been run
     if (gpio_mode != BOARD && gpio_mode != BCM)

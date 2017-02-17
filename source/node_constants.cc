@@ -30,7 +30,7 @@ extern "C" {
 #include "event_gpio.h"
 }
 
-void define_constants(Local<Object> exports)
+void define_constants(const v8::Local<v8::Object>& exports)
 {
    high = HIGH;
    NODE_DEFINE_CONSTANT(exports, high);

@@ -23,14 +23,14 @@ SOFTWARE.
 #include <node.h>
 #include <node_object_wrap.h>
 
-class PWM : public node::ObjectWrap {
+class PWMClass : public node::ObjectWrap {
 public:
   // method used to export class
   static void Init(v8::Local<v8::Object> exports);
 
 private:
-  PWM();
-  ~PWM();
+  PWMClass();
+  ~PWMClass();
 
   // js function PWM(channel, freqency)
   static void New(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -44,4 +44,6 @@ private:
   unsigned int gpio_;
   float freq_;
   float dutycycle_;
+
+  static v8::Persistent<v8::Function> constructor;
 };

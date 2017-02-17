@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-class v8::Isolate;
+#include <node.h>
 
 extern "C" {
 #include "cpuinfo.h"
@@ -34,14 +34,15 @@ extern "C" {
 #define I2C          42
 #define PWM          43
 
-int gpio_mode;
-const int pin_to_gpio_rev1[41];
-const int pin_to_gpio_rev2[41];
-const int pin_to_gpio_rev3[41];
-const int (*pin_to_gpio)[41];
-int gpio_direction[54];
-rpi_info rpiinfo;
-int setup_error;
-int module_setup;
+extern int gpio_mode;
+extern const int pin_to_gpio_rev1[41];
+extern const int pin_to_gpio_rev2[41];
+extern const int pin_to_gpio_rev3[41];
+extern const int (*pin_to_gpio)[41];
+extern int gpio_direction[54];
+extern rpi_info rpiinfo;
+extern int setup_error;
+extern int module_setup;
+
 int check_gpio_priv(v8::Isolate* isolate);
-int get_gpio_number(v8::Isolate* isolate, int channel, unsigned int *gpio);
+int get_gpio_number(v8::Isolate* isolate, int channel, int *gpio);
