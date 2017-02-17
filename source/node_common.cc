@@ -38,6 +38,10 @@ const int pin_to_gpio_rev3[41] = {-1, -1, -1, 2, -1, 3, -1, 4, 14, -1, 15, 17, 1
 int setup_error = 0;
 int module_setup = 0;
 
+const int (*pin_to_gpio)[41];
+int gpio_direction[54];
+rpi_info rpiinfo;
+
 int check_gpio_priv(v8::Isolate* isolate)
 {
     // check module has been imported cleanly

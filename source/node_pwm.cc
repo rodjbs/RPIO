@@ -38,6 +38,8 @@ using v8::Value;
 using v8::Context;
 using v8::Function;
 
+v8::Persistent<v8::Function> PWMClass::constructor;
+
 PWMClass::PWMClass()
 {
 }
