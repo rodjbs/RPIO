@@ -30,6 +30,24 @@ extern "C" {
 #include "event_gpio.h"
 }
 
+int high;
+int low;
+int input;
+int output;
+int pwm;
+int serial;
+int i2c;
+int spi;
+int unknown;
+int board;
+int bcm;
+int pud_off;
+int pud_up;
+int pud_down;
+int rising_edge;
+int falling_edge;
+int both_edge;
+
 void define_constants(const v8::Local<v8::Object>& exports)
 {
    high = HIGH;
