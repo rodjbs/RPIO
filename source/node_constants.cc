@@ -48,56 +48,74 @@ int rising_edge;
 int falling_edge;
 int both_edge;
 
+// adapted from node.h
+#define MY_DEFINE_CONSTANT(target, constant, str)                             \
+  do {                                                                        \
+    v8::Isolate* isolate = target->GetIsolate();                              \
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();            \
+    v8::Local<v8::String> constant_name =                                     \
+        v8::String::NewFromUtf8(isolate, str);                                \
+    v8::Local<v8::Number> constant_value =                                    \
+        v8::Number::New(isolate, static_cast<double>(constant));              \
+    v8::PropertyAttribute constant_attributes =                               \
+        static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete);    \
+    (target)->DefineOwnProperty(context,                                      \
+                                constant_name,                                \
+                                constant_value,                               \
+                                constant_attributes).FromJust();              \
+  }                                                                           \
+while (0)
+
 void define_constants(const v8::Local<v8::Object>& exports)
 {
    high = HIGH;
-   NODE_DEFINE_CONSTANT(exports, high);
+   MY_DEFINE_CONSTANT(exports, high, "HIGH");
 
    low = LOW;
-   NODE_DEFINE_CONSTANT(exports, low);
+   MY_DEFINE_CONSTANT(exports, low, "LOW");
 
    output = OUTPUT;
-   NODE_DEFINE_CONSTANT(exports, output);
+   MY_DEFINE_CONSTANT(exports, output, "OUTPUT");
 
    input = INPUT;
-   NODE_DEFINE_CONSTANT(exports, input);
+   MY_DEFINE_CONSTANT(exports, input, "INPUT");
 
    pwm = PWM;
-   NODE_DEFINE_CONSTANT(exports, pwm);
+   MY_DEFINE_CONSTANT(exports, pwm, "PWM");
 
    serial = SERIAL;
-   NODE_DEFINE_CONSTANT(exports, serial);
+   MY_DEFINE_CONSTANT(exports, serial, "SERIAL");
 
    i2c = I2C;
-   NODE_DEFINE_CONSTANT(exports, i2c);
+   MY_DEFINE_CONSTANT(exports, i2c, "I2C");
 
    spi = SPI;
-   NODE_DEFINE_CONSTANT(exports, spi);
+   MY_DEFINE_CONSTANT(exports, spi, "SPI");
 
    unknown = MODE_UNKNOWN;
-   NODE_DEFINE_CONSTANT(exports, unknown);
+   MY_DEFINE_CONSTANT(exports, unknown, "UNKNOWN");
 
    board = BOARD;
-   NODE_DEFINE_CONSTANT(exports, board);
+   MY_DEFINE_CONSTANT(exports, board, "BOARD");
 
    bcm = BCM;
-   NODE_DEFINE_CONSTANT(exports, bcm);
+   MY_DEFINE_CONSTANT(exports, bcm, "BCM");
 
    pud_off = PUD_OFF + PY_PUD_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, pud_off);
+   MY_DEFINE_CONSTANT(exports, pud_off, "PUD_OFF");
 
    pud_up = PUD_UP + PY_PUD_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, pud_up);
+   MY_DEFINE_CONSTANT(exports, pud_up, "PUD_UP");
 
    pud_down = PUD_DOWN + PY_PUD_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, pud_down);
+   MY_DEFINE_CONSTANT(exports, pud_down, "PUD_DOWN");
 
    rising_edge = RISING_EDGE + PY_EVENT_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, rising_edge);
+   MY_DEFINE_CONSTANT(exports, rising_edge, "RISING_EDGE");
 
    falling_edge = FALLING_EDGE + PY_EVENT_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, falling_edge);
+   MY_DEFINE_CONSTANT(exports, falling_edge, "FALLING_EDGE");
 
    both_edge = BOTH_EDGE + PY_EVENT_CONST_OFFSET;
-   NODE_DEFINE_CONSTANT(exports, both_edge);
+   MY_DEFINE_CONSTANT(exports, both_edge, "BOTH_EDGE");
 }
