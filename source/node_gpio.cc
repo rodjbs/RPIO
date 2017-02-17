@@ -162,6 +162,8 @@ int process_args_setup_channel(int& channel, int& direction, int& pud, int& init
     } else {
       pud = -100; // spagetthi: fail the pud value check
     }
+  } else {
+    pud = PUD_OFF;
   }
 
   int invalid_initial = 0;
