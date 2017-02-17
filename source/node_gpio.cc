@@ -119,7 +119,7 @@ static void export_cleanup(const FunctionCallbackInfo<Value>& args)
     }
 
     if (!found && gpio_warnings) {
-      fprintf(stderr, "No channels have been set up yet - nothing to clean up!  Try cleaning up at the end of your program instead!");
+      fprintf(stderr, "No channels have been set up yet - nothing to clean up!  Try cleaning up at the end of your program instead!\n");
     }
 }
 
@@ -241,7 +241,7 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
         ((func != 0 && func != 1) ||                 // (already one of the alt functions or
         (gpio_direction[gpio] == -1 && func == 1)))  // already an output not set from this program)
     {
-       fprintf(stderr, "This channel is already in use, continuing anyway.  Use setwarnings(false) to disable warnings.");
+       fprintf(stderr, "This channel is already in use, continuing anyway.  Use setwarnings(false) to disable warnings.\n");
     }
 
     // warn about pull/up down on i2c channels
@@ -250,7 +250,7 @@ export_setup_channel(const FunctionCallbackInfo<Value>& args)
        } else if ((rpiinfo.p1_revision == 1 && (gpio == 0 || gpio == 1)) ||
                   (gpio == 2 || gpio == 3)) {
           if (pud == PUD_UP || pud == PUD_DOWN)
-             fprintf(stderr, "A physical pull up resistor is fitted on this channel!");
+             fprintf(stderr, "A physical pull up resistor is fitted on this channel!\n");
        }
     }
 
@@ -268,13 +268,13 @@ int process_args_output_gpio(int& channel, int& value, const FunctionCallbackInf
 
   if(args.Length() < 2) {
     isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "setup() has 2 required arguments")));
+        String::NewFromUtf8(isolate, "output() has 2 required arguments")));
     return 1;
   }
 
   if (!args[0]->IsNumber() || !args[1]->IsNumber()) {
     isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "setup() expected a number")));
+        String::NewFromUtf8(isolate, "output() expected a number")));
     return 1;
   }
 
