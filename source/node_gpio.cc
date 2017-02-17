@@ -170,7 +170,7 @@ int process_args_setup_channel(int& channel, int& direction, int& pud, int& init
   if(args.Length() > 3) {
     if(args[3]->IsNumber()) {
       initial = args[3]->NumberValue();
-      if(initial != -1 || initial != 0 || initial != 1)
+      if(initial != -1 && initial != 0 && initial != 1)
         invalid_initial = 1;
     } else if(!(args[3]->IsUndefined() || args[3]->IsNull())) {
       invalid_initial = 1;
