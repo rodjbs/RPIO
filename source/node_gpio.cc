@@ -125,6 +125,11 @@ static void export_cleanup(const FunctionCallbackInfo<Value>& args)
     }
 }
 
+void gc_cleanup(Isolate *isolate, v8::GCType type, v8::GCCallbackFlags flags)
+{
+    // TODO call export_cleanup
+}
+
 int process_args_setup_channel(int& channel, int& direction, int& pud, int& initial,
                             const FunctionCallbackInfo<Value>& args)
 {
@@ -443,6 +448,8 @@ export_setmode(const FunctionCallbackInfo<Value>& args)
 // node function mode = getmode()
 void export_getmode(const FunctionCallbackInfo<Value>& args)
 {
+  Isolate* isolate = args.GetIsolate();
+
    if (setup_error)
    {
       isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Module not imported correctly!")));
@@ -477,15 +484,67 @@ export_gpio_function(const FunctionCallbackInfo<Value>& args)
 
     channel = args[0]->NumberValue();
 
-    if ((gpio = channel_to_gpio(isolate, channel)) < 0)
+    if (get_gpio_number(channel, &gpio))
         return;
+
+    if (mmap_gpio_mem())
+       return;
 
     f = gpio_function(gpio);
     switch (f)
     {
-        case 0 : f = INPUT;  break;
-        case 1 : f = OUTPUT; break;
-    }
+       case 0 : f = INPUT;  break;
+       case 1 : f = OUTPUT; break;
+
+       // ALT 0
+       case 4 : switch (gpio)
+                {
+                   case 0 :
+                   case 1 :
+                   case 2 :
+                   case 3 : f = I2C; break;
+
+                   case 7 :
+                   case 8 :
+                   case 9 :
+                   case 10 :
+                   case 11 : f = SPI; break;
+
+                   case 12 :
+                   case 13 : f = PWM; break;
+
+                   case 14 :
+                   case 15 : f = SERIAL; break;
+
+                   case 28 :
+                   case 29 : f = I2C; break;
+
+                   default : f = MODE_UNKNOWN; break;
+                }
+                break;
+
+       // ALT 5
+       case 2 : if (gpio == 18 || gpio == 19) f = PWM; else f = MODE_UNKNOWN;
+                break;
+
+       // ALT 4
+       case 3 : switch (gpio)
+
+                {
+                   case 16 :
+                   case 17 :
+                   case 18 :
+                   case 19 :
+                   case 20 :
+                   case 21 : f = SPI; break;
+                   default : f = MODE_UNKNOWN; break;
+                }
+                break;
+
+       default : f = MODE_UNKNOWN; break;
+
+      }
+
     args.GetReturnValue().Set(Number::New(isolate, f));
 }
 
@@ -503,39 +562,17 @@ export_setwarnings(const FunctionCallbackInfo<Value>& args)
 
   if (!args[0]->IsBoolean()) {
     isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "channel must be a number")));
+        String::NewFromUtf8(isolate, "argument must be boolean")));
     return;
   }
 
-  ::gpio_warnings = static_cast<int>(args[0]->BooleanValue());
-}
-
-// node function value = channel_to_gpio(channel)
-static void
-export_channel_to_gpio(const FunctionCallbackInfo<Value>& args)
-{
-  int channel, gpio;
-
-  Isolate* isolate = args.GetIsolate();
-
-  if(args.Length() < 1) {
-    isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "channel_to_gpio() has 1 required argument")));
-    return;
+  if (setup_error)
+  {
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Module not imported correctly!")));
+     return;
   }
 
-  if (!args[0]->IsNumber()) {
-    isolate->ThrowException(Exception::TypeError(
-        String::NewFromUtf8(isolate, "channel must be a number")));
-    return;
-  }
-
-  channel = args[0]->NumberValue();
-
-  if ((gpio = channel_to_gpio(isolate, channel)) < 0)
-      return;
-
-  args.GetReturnValue().Set(Number::New(isolate, gpio));
+  gpio_warnings = static_cast<int>(args[0]->BooleanValue());
 }
 
 static unsigned int chan_from_gpio(unsigned int gpio)
@@ -557,28 +594,14 @@ static unsigned int chan_from_gpio(unsigned int gpio)
    return;
 }
 
-// adapted from node.h
-// #define MY_NODE_DEFINE_STRING(target, constant)                                \
-//   do {                                                                        \
-//     v8::Isolate* isolate = target->GetIsolate();                              \
-//     v8::Local<v8::Context> context = isolate->GetCurrentContext();            \
-//     v8::Local<v8::String> constant_name =                                     \
-//         v8::String::NewFromUtf8(isolate, #constant);                          \
-//     v8::Local<v8::String> constant_value =                                    \
-//         v8::String::NewFromUtf8(isolate, constant);                           \
-//     v8::PropertyAttribute constant_attributes =                               \
-//         static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontDelete);    \
-//     (target)->DefineOwnProperty(context,                                      \
-//                                 constant_name,                                \
-//                                 constant_value,                               \
-//                                 constant_attributes).FromJust();              \
-//   }                                                                           \
-// while (0)
+// TODO transcribe edge / event methods
+
+
 
 void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
   Isolate* isolate = context->GetIsolate();
 
-  isolate->AddGCPrologueCallback(cleanup);
+  isolate->AddGCPrologueCallback(gc_cleanup);
 
   PWM::Init(exports);
 
@@ -591,41 +614,32 @@ void init(Local<Object> exports, Local<Value> module, Local<Context> context) {
   NODE_SET_METHOD(exports, "getmode", export_getmode);
   NODE_SET_METHOD(exports, "gpio_function", export_gpio_function);
   NODE_SET_METHOD(exports, "setwarnings", export_setwarnings);
-  NODE_SET_METHOD(exports, "channel_to_gpio", export_channel_to_gpio);
 
   define_constants(exports);
 
+  for (i=0; i<54; i++)
+     gpio_direction[i] = -1;
 
-  // cache_rpi_revision();
-  // switch (revision_int) {
-  // case 1:
-  //     pin_to_gpio = &pin_to_gpio_rev1;
-  //     gpio_to_pin = &gpio_to_pin_rev1;
-  //     break;
-  // case 2:
-  //     pin_to_gpio = &pin_to_gpio_rev2;
-  //     gpio_to_pin = &gpio_to_pin_rev2;
-  //     break;
-  // case 3:
-  //     pin_to_gpio = &pin_to_gpio_rev3;
-  //     gpio_to_pin = &gpio_to_pin_rev3;
-  //     break;
-  // default:
-  //     isolate->ThrowException(Exception::Error(
-  //       String::NewFromUtf8(isolate, "This module can only be run on a Raspberry Pi!")));
-  //     return;
-  // }
-  //
-  // const int rpi_revision = revision_int;
-  // NODE_DEFINE_CONSTANT(exports, rpi_revision);
-  //
-  // const char* rpi_revision_hex = revision_hex;
-  // MY_NODE_DEFINE_STRING(exports, rpi_revision_hex);
-  //
-  // const char* version = "1.0.0";
-  // MY_NODE_DEFINE_STRING(exports, version);
-  //
-  // module_setup(isolate);
+  // detect board revision and set up accordingly
+  if (get_rpi_info(&rpiinfo))
+  {
+     isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "This module can only be run on a Raspberry Pi!")));
+     setup_error = 1;
+     return;
+  }
+
+
+   if (rpiinfo.p1_revision == 1) {
+      pin_to_gpio = &pin_to_gpio_rev1;
+   } else if (rpiinfo.p1_revision == 2) {
+      pin_to_gpio = &pin_to_gpio_rev2;
+   } else { // assume model B+ or A+ or 2B
+      pin_to_gpio = &pin_to_gpio_rev3;
+   }
+
+  int rpi_revision = revision_int;
+  NODE_DEFINE_CONSTANT(exports, rpi_revision);
+
 }
 
 
