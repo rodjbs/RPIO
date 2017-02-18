@@ -81,7 +81,7 @@ void define_constants(const v8::Local<v8::Object>& exports)
    MY_DEFINE_CONSTANT(exports, input, "INPUT");
 
    pwm = PWM;
-   MY_DEFINE_CONSTANT(exports, pwm, "PWM");
+   MY_DEFINE_CONSTANT(exports, pwm, "HARD_PWM");
 
    serial = SERIAL;
    MY_DEFINE_CONSTANT(exports, serial, "SERIAL");
