@@ -125,7 +125,17 @@ static void export_cleanup(const FunctionCallbackInfo<Value>& args)
 
 void gc_cleanup(Isolate *isolate, v8::GCType type, v8::GCCallbackFlags flags)
 {
-    // TODO call export_cleanup
+  event_cleanup_all();
+
+  // set everything back to input
+  for (i=0; i<54; i++) {
+     if (gpio_direction[i] != -1) {
+        setup_gpio(i, INPUT, PUD_OFF);
+        gpio_direction[i] = -1;
+        found = 1;
+     }
+  }
+  gpio_mode = MODE_UNKNOWN;
 }
 
 int process_args_setup_channel(int& channel, int& direction, int& pud, int& initial,
